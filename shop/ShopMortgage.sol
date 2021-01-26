@@ -2,7 +2,10 @@ pragma solidity ^0.7.0;
 
 // SPDX-License-Identifier: SimPL-2.0
 
-import "./MortgageBase.sol";
+import "../interface/IERC20.sol";
+
+import "../MortgageBase.sol";
+
 import "./ShopExchange.sol";
 
 abstract contract ShopMortgage is ShopExchange, MortgageBase {
@@ -14,9 +17,9 @@ abstract contract ShopMortgage is ShopExchange, MortgageBase {
         uint256 reward = _withdraw();
         
         if (block.timestamp > startTime + totalDuration &&
-            reward <= rarityAmounts[0]) {
+            reward < rarityAmounts[0]) {
             
-            _buy(msg.sender, address(0), reward, 1, 0);
+            IERC20(manager.members("token")).transfer(msg.sender, reward);
         } else {
             _buyExchange(address(0), reward / quantity, quantity, 0);
         }

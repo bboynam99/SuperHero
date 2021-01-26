@@ -2,7 +2,7 @@ pragma solidity ^0.7.0;
 
 // SPDX-License-Identifier: SimPL-2.0
 
-import "./lib/Util.sol";
+import "../lib/Util.sol";
 
 import "./Shop.sol";
 
@@ -40,8 +40,7 @@ abstract contract ShopExchange is Shop {
         uint256 weight0 = 0;
         uint256 weight1 = 1;
         
-        if (tokenAmount <= rarityAmounts[0]) {
-        } else if (tokenAmount >= rarityAmounts[length - 1]) {
+        if (tokenAmount >= rarityAmounts[length - 1]) {
             rarity = length;
             weight0 = 999;
         } else {

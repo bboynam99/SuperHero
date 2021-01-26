@@ -7,12 +7,15 @@ import "./interface/IERC20.sol";
 import "./interface/IERC721.sol";
 import "./interface/IERC721TokenReceiver.sol";
 
+import "./lib/UInteger.sol";
 import "./lib/Util.sol";
 
 import "./Member.sol";
 
 contract Market is Member, IERC721TokenReceiver {
-    struct Comm {
+    using UInteger for uint256;
+    
+    struct Retail {
         uint256 id;
         address owner;
         address nft;
@@ -21,67 +24,76 @@ contract Market is Member, IERC721TokenReceiver {
         uint256 price;
     }
     
-    Comm[] public comms;
-    uint256 public idCount = 0;
-    
-    mapping(address => mapping(address => uint256)) public balances;
-    uint256 public feeRatio = Util.UDENO * 10 / 100;
-    
-    function commLength() external view returns(uint256) {
-        return comms.length;
+    struct MoneyWhite {
+        bool enabled;
+        uint256 priceMin;
+        uint256 feeRatio;
     }
     
-    function getComms(uint256 startIndex, uint256 endIndex,
+    event Trade(uint256 indexed id, address indexed from, address indexed to,
+        address nft, uint256 nftId, address money, uint256 price);
+    
+    uint256 public idCount = 0;
+    Retail[] public retails;
+    mapping(uint256 => uint256) public indexs;
+    
+    mapping(address => bool) public nftWhites;
+    mapping(address => MoneyWhite) public moneyWhites;
+    
+    mapping(address => mapping(address => uint256)) public balances;
+    
+    function setNftWhite(address addr, bool enable)
+        external CheckPermit("Config") {
+        
+        nftWhites[addr] = enable;
+    }
+    
+    function setMoneyWhite(address addr, bool enable,
+        uint256 priceMin, uint256 feeRatio)
+        external CheckPermit("Config") {
+        
+        MoneyWhite storage moneyWhite = moneyWhites[addr];
+        moneyWhite.enabled = enable;
+        moneyWhite.priceMin = priceMin;
+        moneyWhite.feeRatio = feeRatio;
+    }
+    
+    function retailsLength() external view returns(uint256) {
+        return retails.length;
+    }
+    
+    function getRetails(uint256 startIndex, uint256 endIndex, uint256 resultLength,
         address owner, address nft, address money)
-        external view returns(Comm[] memory, uint256[] memory) {
+        external view returns(Retail[] memory) {
         
         if (endIndex == 0) {
-            endIndex = comms.length;
+            endIndex = retails.length;
         }
         
-        uint256 length = 0;
+        require(startIndex <= endIndex, "invalid index");
         
-        for (uint256 i = startIndex; i != endIndex; ++i) {
-            Comm storage comm = comms[i];
-            
-            if (owner != address(0) && owner != comm.owner) {
-                continue;
-            }
-            
-            if (nft != address(0) && nft != comm.nft) {
-                continue;
-            }
-            
-            if (money != address(0) && money != comm.money) {
-                continue;
-            }
-            
-            ++length;
-        }
-        
-        Comm[] memory result = new Comm[](length);
-        uint256[] memory indexs = new uint256[](length);
+        Retail[] memory result = new Retail[](resultLength);
         
         uint256 len = 0;
-        for (uint256 i = startIndex; len != length; ++i) {
-            Comm storage comm = comms[i];
+        for (uint256 i = startIndex; i != endIndex && len != resultLength; ++i) {
+            Retail storage retail = retails[i];
             
-            if (owner != address(0) && owner != comm.owner) {
+            if (owner != address(0) && owner != retail.owner) {
                 continue;
             }
             
-            if (nft != address(0) && nft != comm.nft) {
+            if (nft != address(0) && nft != retail.nft) {
                 continue;
             }
             
-            if (money != address(0) && money != comm.money) {
+            if (money != address(0) && money != retail.money) {
                 continue;
             }
             
-            result[len++] = comm;
+            result[len++] = retail;
         }
         
-        return (result, indexs);
+        return result;
     }
     
     function onERC721Received(address, address from,
@@ -101,7 +113,7 @@ contract Market is Member, IERC721TokenReceiver {
                 price = (price << 8) | uint8(data[i]);
             }
             
-            _addComm(from, msg.sender, nftId, address(money), price);
+            _addRetail(from, msg.sender, nftId, address(money), price);
         } else {
             return 0;
         }
@@ -109,60 +121,86 @@ contract Market is Member, IERC721TokenReceiver {
         return Util.ERC721_RECEIVER_RETURN;
     }
     
-    function _addComm(address owner, address nft, uint256 nftId,
+    function _addRetail(address owner, address nft, uint256 nftId,
         address money, uint256 price) internal {
         
-        comms.push(Comm({
+        require(nftWhites[nft], "nft not in white list");
+        
+        MoneyWhite storage moneyWhite = moneyWhites[money];
+        require(moneyWhite.enabled, "money not in white list");
+        require(price >= moneyWhite.priceMin, "money price too low");
+        
+        Retail memory retail = Retail({
             id: ++idCount,
             owner: owner,
             nft: nft,
             nftId: nftId,
             money: money,
             price: price
-        }));
+        });
+        
+        indexs[retail.id] = retails.length;
+        retails.push(retail);
+        
+        emit Trade(retail.id, address(0), owner, nft, nftId, money, price);
     }
     
-    function removeComm(uint256 index, uint256 id) external {
-        Comm storage comm = comms[index];
-        require(comm.id == id, "id not match");
-        require(comm.owner == msg.sender, "you are not owner");
+    function removeRetail(uint256 id) external {
+        uint256 index = indexs[id];
+        Retail memory retail = retails[index];
+        require(retail.id == id, "id not match");
+        require(retail.owner == msg.sender, "you not own the retail");
         
-        IERC721(comm.nft).transferFrom(
-            address(this), comm.owner, comm.nftId);
+        Retail storage tail = retails[retails.length - 1];
         
-        comms[index] = comms[comms.length - 1];
-        comms.pop();
+        indexs[tail.id] = index;
+        delete indexs[id];
+        
+        retails[index] = tail;
+        retails.pop();
+        
+        emit Trade(id, retail.owner, address(0),
+            retail.nft, retail.nftId, retail.money, retail.price);
+        
+        IERC721(retail.nft).transferFrom(
+            address(this), retail.owner, retail.nftId);
     }
     
-    function buy(uint256 index, uint256 id) external payable {
-        Comm storage comm = comms[index];
-        require(comm.id == id, "id not match");
+    function buy(uint256 id) external payable {
+        uint256 index = indexs[id];
+        Retail memory retail = retails[index];
+        require(retail.id == id, "id not match");
         
-        address payable cashier = payable(manager.members("cashier"));
-        uint256 fee = comm.price * feeRatio / Util.UDENO;
+        Retail storage tail = retails[retails.length - 1];
         
-        if (comm.money == address(0)) {
-            require(msg.value == comm.price, "invalid money amount");
-            cashier.transfer(fee);
+        indexs[tail.id] = index;
+        delete indexs[id];
+        
+        retails[index] = tail;
+        retails.pop();
+        
+        emit Trade(id, retail.owner, msg.sender,
+            retail.nft, retail.nftId, retail.money, retail.price);
+        
+        MoneyWhite storage moneyWhite = moneyWhites[retail.money];
+        address payable feeAccount = payable(manager.members("feeAccount"));
+        uint256 fee = retail.price.mul(moneyWhite.feeRatio).div(Util.UDENO);
+        
+        if (retail.money == address(~uint256(0))) {
+            require(msg.value == retail.price, "invalid money amount");
+            feeAccount.transfer(fee);
         } else {
-            IERC20 money = IERC20(comm.money);
-            require(money.transferFrom(msg.sender, address(this), comm.price),
+            IERC20 money = IERC20(retail.money);
+            require(money.transferFrom(msg.sender, address(this), retail.price),
                 "transfer money failed");
-            require(money.transferFrom(address(this), cashier, fee),
+            require(money.transfer(feeAccount, fee),
                 "transfer money failed");
         }
         
-        balances[comm.owner][comm.money] += comm.price - fee;
+        balances[retail.owner][retail.money] += retail.price.sub(fee);
         
-        IERC721(comm.nft).transferFrom(
-            address(this), msg.sender, comm.nftId);
-        
-        comms[index] = comms[comms.length - 1];
-        comms.pop();
-    }
-    
-    function setFeeRatio(uint256 fr) external CheckPermit("Config") {
-        feeRatio = fr;
+        IERC721(retail.nft).transferFrom(
+            address(this), msg.sender, retail.nftId);
     }
     
     function withdraw(address money) external {
@@ -170,9 +208,9 @@ contract Market is Member, IERC721TokenReceiver {
         
         uint256 balance = balances[owner][money];
         require(balance > 0, "no balance");
-        delete balances[owner][money];
+        balances[owner][money] = 0;
         
-        if (money == address(0)) {
+        if (money == address(~uint256(0))) {
             owner.transfer(balance);
         } else {
             require(IERC20(money).transfer(owner, balance),

@@ -2,7 +2,7 @@ pragma solidity ^0.7.0;
 
 // SPDX-License-Identifier: SimPL-2.0
 
-import "./interface/IERC20.sol";
+import "../interface/IERC20.sol";
 
 import "./ShopRandom.sol";
 

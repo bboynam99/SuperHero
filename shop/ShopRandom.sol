@@ -2,7 +2,7 @@ pragma solidity ^0.7.0;
 
 // SPDX-License-Identifier: SimPL-2.0
 
-import "./lib/Util.sol";
+import "../lib/Util.sol";
 
 import "./Shop.sol";
 

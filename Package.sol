@@ -8,9 +8,10 @@ import "./interface/IBlockhashMgr.sol";
 import "./lib/String.sol";
 import "./lib/Util.sol";
 
+import "./shop/Shop.sol";
+
 import "./Card.sol";
 import "./ERC721Ex.sol";
-import "./Shop.sol";
 
 // nftSign  packageType tokenAmount quantity    padding mintTime    index
 // 1        31          64          16          40      40          64

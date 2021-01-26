@@ -2,13 +2,13 @@ pragma solidity ^0.7.0;
 
 // SPDX-License-Identifier: SimPL-2.0
 
-import "./interface/IERC20.sol";
+import "../interface/IERC20.sol";
 
-import "./lib/UInteger.sol";
-import "./lib/Util.sol";
+import "../lib/UInteger.sol";
+import "../lib/Util.sol";
 
-import "./Member.sol";
-import "./Package.sol";
+import "../Member.sol";
+import "../Package.sol";
 
 abstract contract Shop is Member {
     using UInteger for uint256;
